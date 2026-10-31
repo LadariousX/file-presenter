@@ -1,0 +1,118 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>USB Remote</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#111;color:#eee;font-family:-apple-system,sans-serif}
+  #main{display:flex;flex-direction:column;height:100dvh;padding:12px;gap:10px}
+  #thumb{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;border-radius:12px}
+  #thumb img{max-width:100%;max-height:100%;border-radius:8px}
+  #folder{font-size:14px;color:#9ab;word-break:break-word}
+  #name{font-size:19px;font-weight:700;word-break:break-all;margin-top:2px}
+  .prog{height:6px;background:#333;border-radius:3px;overflow:hidden}
+  .prog div{height:100%;background:#3a8}
+  #count{font-size:13px;color:#999;margin-top:4px;display:flex;justify-content:space-between}
+  .row{display:flex;gap:10px}
+  button{flex:1;font-size:34px;padding:20px 0;border:0;border-radius:14px;background:#2a2a2a;color:#fff}
+  button:active{background:#444}
+  button.small{font-size:17px;padding:14px 0}
+  #pp{font-size:22px;flex:.6}
+  #list{position:fixed;inset:0;background:#111;display:none;flex-direction:column}
+  #list.open{display:flex}
+  #lhead{display:flex;gap:8px;padding:10px;border-bottom:1px solid #333;align-items:center}
+  #lhead button{flex:0 0 auto;font-size:16px;padding:10px 14px}
+  #crumb{flex:1;font-size:13px;color:#9ab;word-break:break-word}
+  #items{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .it{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #222}
+  .it:active{background:#2a2a2a}
+  .it.cur{background:#1d3a30}
+  .it img{width:52px;height:52px;object-fit:cover;border-radius:6px;background:#222;flex:0 0 auto}
+  .it .ico{width:52px;text-align:center;font-size:30px;flex:0 0 auto}
+  .it .t{flex:1;min-width:0;font-size:15px;word-break:break-word}
+  .it .sub{font-size:12px;color:#888;margin-top:3px}
+  .it .chk{color:#3a8;font-size:20px;width:22px;flex:0 0 auto}
+  .it .prog{margin-top:4px}
+</style></head><body>
+<div id="main">
+  <div id="thumb"><img id="img"></div>
+  <div>
+    <div id="folder"></div>
+    <div id="name"></div>
+  </div>
+  <div>
+    <div class="prog"><div id="pbar"></div></div>
+    <div id="count"><span id="pos"></span><span id="seen"></span></div>
+  </div>
+  <div class="row">
+    <button class="small" onclick="openList()">☰ List</button>
+    <button class="small" onclick="post('/api/go?unseen=1')">⏭ Next unseen</button>
+  </div>
+  <div class="row">
+    <button onclick="post('/api/go?delta=-1')">◀</button>
+    <button id="pp" onclick="post('/api/playpause')">⏯</button>
+    <button onclick="post('/api/go?delta=1')">▶</button>
+  </div>
+</div>
+
+<div id="list">
+  <div id="lhead">
+    <button onclick="up()">← Up</button>
+    <div id="crumb"></div>
+    <button onclick="closeList()">✕</button>
+  </div>
+  <div id="items"></div>
+</div>
+
+<script>
+let version = -1, cur = null, dir = '';
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function show(s) {
+  if (s.version === version) return;
+  version = s.version; cur = s;
+  document.getElementById('img').src = '/thumb/' + s.index;
+  document.getElementById('folder').textContent = '📁 ' + (s.folder ? s.folder.replaceAll('/', ' › ') : '(top level)');
+  document.getElementById('name').textContent = s.name;
+  document.getElementById('pos').textContent = `${s.index + 1} / ${s.total}`;
+  document.getElementById('seen').textContent = `${s.seen} seen · ${Math.floor(100 * s.seen / s.total)}%`;
+  document.getElementById('pbar').style.width = (100 * s.seen / s.total) + '%';
+}
+async function post(url) { show(await (await fetch(url, {method: 'POST'})).json()); }
+async function poll() {
+  try { show(await (await fetch('/api/state')).json()); } catch (e) {}
+  setTimeout(poll, 1000);
+}
+
+async function load(d) {
+  dir = d;
+  const L = await (await fetch('/api/list?dir=' + encodeURIComponent(d))).json();
+  document.getElementById('crumb').textContent = d ? d.replaceAll('/', ' › ') : 'NO NAME';
+  const rows = L.dirs.map(f => `
+    <div class="it" data-dir="${esc(f.path)}">
+      <div class="ico">📁</div>
+      <div class="t">${esc(f.name)}
+        <div class="sub">${f.seen} / ${f.total} seen</div>
+        <div class="prog"><div style="width:${100 * f.seen / f.total}%"></div></div>
+      </div>
+    </div>`).concat(L.files.map(f => `
+    <div class="it${cur && f.index === cur.index ? ' cur' : ''}" data-i="${f.index}">
+      <img loading="lazy" src="/thumb/${f.index}">
+      <div class="t">${esc(f.name)}</div>
+      <div class="chk">${f.seen ? '✓' : ''}</div>
+    </div>`));
+  const items = document.getElementById('items');
+  items.innerHTML = rows.join('') || '<div class="it">Empty</div>';
+  const c = items.querySelector('.cur');
+  c ? c.scrollIntoView({block: 'center'}) : items.scrollTop = 0;
+}
+document.getElementById('items').onclick = e => {
+  const it = e.target.closest('.it');
+  if (!it) return;
+  if (it.dataset.dir !== undefined) load(it.dataset.dir);
+  else if (it.dataset.i !== undefined) { post('/api/go?to=' + it.dataset.i); closeList(); }
+};
+function up() { if (dir) load(dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : ''); }
+function openList() { document.getElementById('list').classList.add('open'); load(cur ? cur.folder : ''); }
+function closeList() { document.getElementById('list').classList.remove('open'); }
+poll();
+</script></body></html>
