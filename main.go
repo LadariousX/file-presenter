@@ -1,84 +1,96 @@
-// file-presenter browses every file on a drive in one browser window, controlled from a phone.
+// file-presenter browses every file in a folder in one browser window, controlled from a phone.
 //
-//	go run . ["/Volumes/NO NAME"] [-port 8000] [-no-open] [-cache .cache]
+//	go run . [folder] [-port 8000] [-no-open]
 //
-// Viewer: http://localhost:PORT/        (leave open, fullscreen)
-// Remote: http://<lan-ip>:PORT/remote   (open on your phone)
+// With no folder, the browser opens a folder picker. A small window stays open while it runs;
+// closing it stops the app.
+// Viewer: http://localhost:PORT/              (opens in the default browser, closes itself on exit)
+// Remote: http://<computer>.local:PORT/remote (open on your phone; the viewer shows a QR code)
+//
+// Code: internal/library (the folder being presented, conversions, thumbnails), internal/server
+// (web pages, remote WebSocket), internal/desktop (the native window).
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"file-presenter/internal/desktop"
+	"file-presenter/internal/library"
+	"file-presenter/internal/server"
 )
-
-var chromium = []string{
-	"/Applications/Chromium.app/Contents/MacOS/Chromium",
-	"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-}
-
-// openViewer opens the viewer in Chromium with autoplay allowed; falls back to the default browser.
-func openViewer(url string) {
-	for _, exe := range chromium {
-		if _, err := os.Stat(exe); err != nil {
-			continue
-		}
-		profile, _ := filepath.Abs(filepath.Join(cacheDir, "chromium"))
-		// Own profile so the autoplay flag applies even if Chromium is already running.
-		exec.Command(exe, "--user-data-dir="+profile, "--autoplay-policy=no-user-gesture-required",
-			"--no-first-run", "--no-default-browser-check", "--start-fullscreen", "--app="+url).Start()
-		return
-	}
-	log.Print("Chromium not found; using default browser (videos may need a click to start)")
-	exec.Command("open", url).Start()
-}
-
-func lanIP() string {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		return "localhost"
-	}
-	defer conn.Close()
-	return conn.LocalAddr().(*net.UDPAddr).IP.String()
-}
 
 func main() {
 	port := flag.Int("port", 8000, "port to listen on")
-	noOpen := flag.Bool("no-open", false, "don't open the viewer window")
-	flag.StringVar(&cacheDir, "cache", ".cache", "cache directory for thumbnails, conversions and progress")
+	noOpen := flag.Bool("no-open", false, "no window, and don't open the viewer in the browser")
 	flag.Parse()
-	root := "/Volumes/NO NAME"
-	if flag.NArg() > 0 {
-		root = flag.Arg(0)
-	}
-
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		log.Print("warning: ffmpeg not found; WMV/MTS/etc. videos and video thumbnails won't work")
-	}
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("scanning %s ...", root)
-	lib := NewLibrary(root)
-	if len(lib.files) == 0 {
-		log.Fatal("no files found")
-	}
-	lib.Go(lib.index)
-	log.Printf("%d files", len(lib.files))
+	viewer := fmt.Sprintf("http://localhost:%d/", *port)
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
-		log.Fatal(err)
+		if alreadyRunning(viewer) { // e.g. the app was opened twice: just show the one that's running
+			if !*noOpen {
+				desktop.OpenBrowser(viewer)
+			}
+			return
+		}
+		desktop.Fatal(fmt.Errorf("Port %d is in use by another program.\n\n%v", *port, err))
 	}
-	fmt.Printf("Viewer: http://localhost:%d/\n", *port)
-	fmt.Printf("Remote: http://%s:%d/remote\n", lanIP(), *port)
-	if !*noOpen {
-		openViewer(fmt.Sprintf("http://localhost:%d/", *port))
+
+	if !library.FileExists(library.Tool("ffmpeg")) {
+		log.Print("warning: ffmpeg not found; some videos won't get thumbnails")
 	}
-	log.Fatal(http.Serve(ln, newServer(lib)))
+
+	app := server.NewApp(*port)
+	if root := flag.Arg(0); root != "" {
+		if err := app.Open(root); err != nil {
+			desktop.Fatal(err)
+		}
+	}
+
+	srv := &http.Server{Handler: app.Handler()}
+	go srv.Serve(ln)
+	fmt.Printf("Viewer: %s\n", viewer)
+	if url := server.RemoteURL(*port); url != "" {
+		fmt.Printf("Remote: %s\n", url)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		desktop.Close()
+	}()
+	if *noOpen {
+		<-ctx.Done()
+	} else {
+		desktop.Run(viewer) // until the window is closed, or Ctrl-C
+	}
+
+	log.Print("shutting down")
+	// Tell the viewer to close its tab and remotes to hang up; give the viewer a moment to hear it.
+	select {
+	case <-app.Close():
+	case <-time.After(2 * time.Second):
+	}
+	srv.Close()
+}
+
+// alreadyRunning reports whether file-presenter is already answering at viewer.
+func alreadyRunning(viewer string) bool {
+	c := http.Client{Timeout: time.Second}
+	resp, err := c.Get(viewer + "api/state")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }

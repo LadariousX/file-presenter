@@ -1,2 +1,3 @@
-.cache/
 file-presenter
+dist/
+.DS_Store

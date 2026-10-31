@@ -1,0 +1,366 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>File Presenter</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#ddd;font-family:-apple-system,sans-serif;overflow:hidden}
+  body{display:flex;flex-direction:column}
+  #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative}
+  #stage img{max-width:100%;max-height:100%;object-fit:contain}
+  #stage video{width:100%;height:100%;object-fit:contain;background:#000}
+  #stage iframe{width:100%;height:100%;border:0;background:#fff}
+  #bar{background:#161616;border-top:1px solid #333;padding:10px 18px 12px;display:flex;align-items:flex-end;gap:20px}
+  #where{flex:1;min-width:0}
+  #path{font-size:22px;word-break:break-word;line-height:1.3}
+  .g1{color:#e6e6e6} .g2{color:#8c8c8c} .sep{color:#555}
+  #count{font-size:16px;color:#aaa;white-space:nowrap;text-align:right}
+  #prog{height:5px;background:#333}
+  #prog div{height:100%;background:#3a8;width:0;transition:width .3s}
+  .msg{text-align:center;font-size:22px;color:#aaa}
+  /* folder picker, shown until a folder is chosen; same page so its click lets videos play with sound */
+  #picker{position:fixed;inset:0;z-index:20;background:#111;color:#eee;display:none;flex-direction:column;
+          align-items:center;padding:40px 24px;box-sizing:border-box;font-family:-apple-system,"Segoe UI",sans-serif}
+  #picker.show{display:flex}
+  #picker h1{margin:0 0 6px;font-size:36px;font-weight:600}
+  #picker .lead{color:#aaa;font-size:20px;margin:0 0 28px}
+  #picker .lead b{color:#3a8}
+  #pk-box{width:100%;max-width:900px;flex:1;min-height:0;display:flex;gap:20px}
+  #pk-drives{width:220px;flex:0 0 auto;display:flex;flex-direction:column;gap:8px}
+  #pk-drives h2{font-size:15px;color:#888;font-weight:500;margin:0 0 4px;text-transform:uppercase;letter-spacing:.05em}
+  .pk-drive{font-size:18px;padding:14px 16px;border-radius:12px;background:#1f1f1f;cursor:pointer;
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pk-drive:hover{background:#2a2a2a}
+  .pk-drive.on{background:#1d3a30}
+  #pk-main{flex:1;min-width:0;display:flex;flex-direction:column;background:#181818;border-radius:14px;padding:16px}
+  #pk-where{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+  #pk-path{flex:1;font-size:17px;color:#9ab;word-break:break-all}
+  #pk-dirs{flex:1;overflow-y:auto;border-top:1px solid #2a2a2a}
+  .pk-dir{font-size:19px;padding:13px 10px;border-bottom:1px solid #222;cursor:pointer}
+  .pk-dir:hover{background:#232323}
+  .pk-dir::before{content:"📁  "}
+  .pk-empty{color:#777;padding:20px 10px;font-size:17px}
+  #pk-foot{display:flex;align-items:center;gap:16px;margin-top:14px}
+  #pk-info{flex:1;color:#999;font-size:16px}
+  #picker button{border:0;border-radius:12px;background:#2a2a2a;color:#fff;cursor:pointer;font-family:inherit;
+                 font-size:16px;padding:10px 14px}
+  #picker button:hover{background:#363636}
+  #pk-go{font-size:20px !important;padding:16px 26px !important;background:#2e7d5b !important}
+  #pk-go:hover{background:#36916a !important}
+  #pk-go:disabled{background:#2a2a2a !important;color:#777;cursor:default}
+  #pk-err{color:#e77;font-size:16px;margin-top:10px;min-height:1em}
+  /* connect screen, shown until a remote connects */
+  #connect{position:fixed;inset:0;background:#111;color:#eee;z-index:10;display:flex;flex-direction:column;
+           align-items:center;justify-content:center;padding:40px;gap:40px}
+  /* hidden = scrolled up out of view; .anim is added after the first state so a reload doesn't animate */
+  #connect{transform:translateY(-100%);visibility:hidden;box-shadow:0 10px 40px #000a}
+  #connect.show{transform:none;visibility:visible}
+  #connect.anim{transition:transform 1s cubic-bezier(.65,0,.35,1),visibility 0s linear 1s}
+  #connect.anim.show{transition:transform 1s cubic-bezier(.65,0,.35,1),visibility 0s}
+  #connect b{color:#3a8}
+  #connect h1{margin:0;font-size:40px;font-weight:600;text-align:center}
+  #cols{display:flex;gap:70px;align-items:center;max-width:1100px}
+  #steps{flex:1;font-size:26px;line-height:1.45}
+  #steps ol{margin:0;padding-left:1.3em}
+  #steps li{margin-bottom:18px}
+  #steps .tip{margin-top:30px;padding:18px 22px;background:#1d1d1d;border-radius:14px;font-size:21px;color:#bbb}
+  #qrbox{flex:0 0 auto;width:360px;text-align:center}
+  #qr{width:340px;height:340px;background:#fff;border-radius:18px;padding:14px;display:block;margin:0 auto}
+  #qrurl{margin-top:14px;font-size:18px;color:#999;word-break:break-all}
+  #nonet{width:340px;height:340px;border:3px dashed #444;border-radius:18px;display:none;flex-direction:column;
+         align-items:center;justify-content:center;font-size:30px;color:#bbb;margin:0 auto;padding:20px}
+  #nonet small{font-size:18px;color:#888;margin-top:12px}
+  #connect footer{font-size:15px;color:#666}
+  #connect footer a{color:#777}
+  #back{position:absolute;top:24px;right:28px;font-size:19px;padding:12px 20px;border:0;border-radius:12px;
+        background:#2a2a2a;color:#eee;cursor:pointer;display:none}
+  #back:hover{background:#363636}
+  /* "Set up remote" slides up from the bottom while the mouse is moving */
+  #setupbtn{position:fixed;left:50%;bottom:90px;z-index:5;font-size:19px;padding:14px 24px;border:0;border-radius:30px;
+            background:#2e7d5b;color:#fff;cursor:pointer;box-shadow:0 6px 24px #000c;
+            transform:translate(-50%,calc(100% + 100vh));transition:transform .45s cubic-bezier(.2,.8,.2,1)}
+  #setupbtn.show{transform:translate(-50%,0)}
+  #setupbtn:hover{background:#36916a}
+</style></head><body>
+<div id="picker">
+  <h1>Choose the folder to present</h1>
+  <p class="lead">Pick your USB drive (or any folder), then press <b>Present this folder</b>.</p>
+  <div id="pk-box">
+    <div id="pk-drives"><h2>Drives</h2></div>
+    <div id="pk-main">
+      <div id="pk-where"><button id="pk-up" onclick="pickerUp()">← Up</button><div id="pk-path"></div></div>
+      <div id="pk-dirs"></div>
+      <div id="pk-foot"><div id="pk-info"></div><button id="pk-go" onclick="present()">Present this folder</button></div>
+      <div id="pk-err"></div>
+    </div>
+  </div>
+</div>
+<div id="connect">
+  <button id="back" onclick="closeSetup()">Back to the presentation ✕</button>
+  <h1>Use your phone as the remote</h1>
+  <div id="cols">
+    <div id="steps">
+      <ol>
+        <li>Connect your phone to the <b>same Wi-Fi</b> as this computer.</li>
+        <li>Open your phone's <b>Camera</b> to scan the QR code.</li>
+        <li><b>Tap the link</b> that pops up. The remote opens on your phone.</li>
+      </ol>
+      <div class="tip"><b>No Wi-Fi?</b> Turn on <b>Personal Hotspot</b> on your phone
+        (Settings → Personal Hotspot), then connect this computer to it.
+        The code updates by itself.</div>
+    </div>
+    <div id="qrbox">
+      <img id="qr" alt="QR code for the remote">
+      <div id="nonet">No network<small>Connect this computer to Wi-Fi or to your phone's hotspot.</small></div>
+      <div id="qrurl"></div>
+    </div>
+  </div>
+  <footer><a href="/remote" target="_blank">Open the remote in a new tab on this computer instead</a></footer>
+</div>
+<div id="stage"></div>
+<div id="bar">
+  <div id="where"><div id="path"></div></div>
+  <div id="count"></div>
+</div>
+<div id="prog"><div></div></div>
+<button id="setupbtn" onclick="openSetup()">📱 Set up remote</button>
+<script>
+let version = -1, cmd = null, seek = null, seekTo = null, last = null;
+// The video's position, sent with each poll so the remote's timeline can follow it.
+function playbackQuery() {
+  const m = stage.querySelector('video');
+  if (!m || !isFinite(m.duration)) return '';
+  return `?v=${version}&pos=${m.currentTime.toFixed(1)}&dur=${m.duration.toFixed(1)}&paused=${m.paused ? 1 : 0}`;
+}
+// The setup screen shows when no remote has been connected for 20 s (server decides), or when opened
+// with the "Set up remote" button; a manually opened one closes when a phone connects.
+let manual = false, manualGen = 0;
+const stage = document.getElementById('stage');
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mb = n => (n / 1048576).toFixed(1) + ' MB';
+const pct = s => Math.floor(100 * s.seen / s.total);
+
+// One video and one audio element, reused for every file. Browsers only allow sound after a click or key
+// press on the page, and Safari only for elements started during one, so the first click "unlocks" these
+// two by playing a moment of silence. Until then (or if a browser still refuses) media plays muted;
+// the player's own volume control can unmute it.
+const video = Object.assign(document.createElement('video'), {controls: true});
+const audio = Object.assign(document.createElement('audio'), {controls: true});
+const SILENCE = (() => {  // 0.1 s of silent 8 kHz mono WAV
+  const n = 800, b = new DataView(new ArrayBuffer(44 + n));
+  const str = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); b.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); b.setUint32(16, 16, true);
+  b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, 8000, true); b.setUint32(28, 8000, true);
+  b.setUint16(32, 1, true); b.setUint16(34, 8, true); str(36, 'data'); b.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) b.setUint8(44 + i, 128);
+  return URL.createObjectURL(new Blob([b], {type: 'audio/wav'}));
+})();
+let unlocked = false;
+function unlockMedia() {
+  if (unlocked) return;
+  unlocked = true;
+  for (const m of [video, audio]) {
+    m.muted = false;
+    if (m.getAttribute('src')) { if (!setupShowing()) m.play().catch(() => {}); continue; }  // already showing a file: unmute it
+    m.src = SILENCE;
+    m.play().catch(() => {}).finally(() => {
+      if (m.src === SILENCE) { m.pause(); m.removeAttribute('src'); m.load(); }
+    });
+  }
+}
+document.addEventListener('pointerdown', unlockMedia);
+document.addEventListener('keydown', unlockMedia);
+
+// Media waits while the setup screen covers the presentation, and starts when it slides away.
+const setupShowing = () => document.getElementById('connect').classList.contains('show');
+const currentMedia = () => [video, audio].find(m => m.isConnected && m.getAttribute('src') && m.src !== SILENCE);
+function playMedia(m) {
+  m.muted = false;
+  m.play().catch(() => { m.muted = true; m.play().catch(() => {}); });
+}
+function startMedia(m, src) {
+  m.src = src;
+  if (!setupShowing()) playMedia(m);
+}
+function stopMedia() {
+  for (const m of [video, audio]) {
+    if (m.getAttribute('src')) { m.pause(); m.removeAttribute('src'); m.load(); }
+  }
+}
+
+// Files go to the browser as they are. When it can't open one (WMV in Chrome, HEIC outside Safari,
+// Word documents…), say so instead of showing a broken player.
+function cantOpen(s) {
+  stopMedia();
+  const ext = s.name.includes('.') ? s.name.split('.').pop().toUpperCase() + ' · ' : '';
+  stage.innerHTML = `<div class="msg"><img src="/thumb/${s.index}" onerror="this.remove()" style="max-height:40vh"><br>` +
+    `This browser can't open this file<br><small>${esc(ext)}${mb(s.size)}</small></div>`;
+}
+for (const m of [video, audio]) {
+  m.addEventListener('error', () => { if (m.error && m.getAttribute('src') && m.src !== SILENCE) cantOpen(last); });
+}
+// Some videos "play" with sound but no picture when the browser lacks the video codec (e.g. HEVC).
+video.addEventListener('loadedmetadata', () => { if (video.src !== SILENCE && video.videoWidth === 0) cantOpen(last); });
+
+function render(s) {
+  stopMedia();
+  const src = '/file/' + s.index + '?v=' + s.version;
+  if (s.kind === 'image') {
+    stage.innerHTML = `<img src="${src}">`;
+    stage.querySelector('img').onerror = () => cantOpen(s);
+  }
+  else if (s.kind === 'video') { stage.replaceChildren(video); startMedia(video, src); }
+  else if (s.kind === 'audio') {
+    stage.innerHTML = `<div class="msg"><img src="/thumb/${s.index}" style="max-height:40vh"><br>♪<br></div>`;
+    stage.firstChild.appendChild(audio);
+    startMedia(audio, src);
+  }
+  else if (s.kind === 'pdf' || s.kind === 'text') stage.innerHTML = `<iframe src="${src}"></iframe>`;
+  else cantOpen(s);
+}
+
+// folder/subfolder/file, segments alternating between two grays
+const pathHTML = s => (s.folder ? s.folder.split('/') : []).concat(s.name)
+  .map((p, i) => `<span class="g${i % 2 + 1}">${esc(p)}</span>`).join('<span class="sep"> / </span>');
+
+function renderBar(s) {
+  document.getElementById('path').innerHTML = pathHTML(s);
+  document.getElementById('count').innerHTML = `${(s.index + 1).toLocaleString()} / ${s.total.toLocaleString()}<br>${s.seen.toLocaleString()} seen · ${pct(s)}%`;
+  document.querySelector('#prog div').style.width = (100 * s.seen / s.total) + '%';
+}
+
+async function poll() {
+  try {
+    const s = await (await fetch('/api/state' + playbackQuery())).json();
+    if (s.closing) return shutDown();
+    const picking = s.index === undefined;  // no folder chosen yet
+    if (picking !== document.getElementById('picker').classList.contains('show')) {
+      document.getElementById('picker').classList.toggle('show', picking);
+      if (picking) showFolder('');
+    }
+    if (picking) { setTimeout(poll, 1000); return; }
+    last = s;
+    applySetup(s);
+    renderBar(s);  // every poll: flagging moves the file, clearing progress changes counts
+    if (s.version !== version) {
+      version = s.version; render(s);
+    }
+    if (cmd !== null && s.cmd !== cmd) {
+      const m = stage.querySelector('video,audio');
+      if (m) m.paused ? m.play() : m.pause();
+    }
+    cmd = s.cmd;
+    // Skip buttons: s.seek is a running total, so taps that arrive between polls add up.
+    if (seek !== null && s.seek !== seek) {
+      const m = stage.querySelector('video');
+      if (m) m.currentTime = Math.max(0, Math.min(m.duration || Infinity, m.currentTime + s.seek - seek));
+    }
+    seek = s.seek;
+    if (seekTo !== null && s.seekTo !== seekTo) {  // the remote's timeline was dragged
+      const m = stage.querySelector('video');
+      if (m) m.currentTime = s.seekAt;
+    }
+    seekTo = s.seekTo;
+  } catch (e) {}
+  setTimeout(poll, 400);
+}
+function applySetup(s) {
+  if (manual && s.remoteGen > manualGen) manual = false;  // a phone just connected
+  const connect = document.getElementById('connect');
+  const show = manual || !s.remote;
+  const wasHidden = !connect.classList.contains('show');
+  connect.classList.toggle('show', show);
+  if (!connect.classList.contains('anim')) requestAnimationFrame(() => connect.classList.add('anim'));
+  document.getElementById('back').style.display = manual && s.remote ? 'block' : 'none';
+  if (show) document.getElementById('setupbtn').classList.remove('show');
+  if (wasHidden && show) refreshConnect();
+  const m = currentMedia();
+  if (m && wasHidden && show) m.pause();           // setup came down: hold playback
+  if (m && !wasHidden && !show) playMedia(m);      // setup slid away: start
+}
+function openSetup() {
+  if (!last) return;
+  manual = true; manualGen = last.remoteGen;
+  applySetup(last);
+}
+function closeSetup() {
+  manual = false;
+  if (last) applySetup(last);
+}
+let idle;
+document.addEventListener('mousemove', () => {
+  if (document.getElementById('connect').classList.contains('show')) return;
+  const b = document.getElementById('setupbtn');
+  b.style.bottom = (document.getElementById('bar').offsetHeight + 24) + 'px';
+  b.classList.add('show');
+  clearTimeout(idle);
+  const hide = () => b.matches(':hover') ? (idle = setTimeout(hide, 1000)) : b.classList.remove('show');
+  idle = setTimeout(hide, 2500);
+});
+
+// Connect screen: check the network every 3 s so the code follows Wi-Fi/hotspot changes.
+let connectURL = null;
+async function refreshConnect() {
+  if (!document.getElementById('connect').classList.contains('show')) return;
+  let url = '';
+  try { url = (await (await fetch('/api/connect')).json()).url; } catch (e) {}
+  if (url === connectURL) return;
+  connectURL = url;
+  document.getElementById('qr').style.display = url ? 'block' : 'none';
+  document.getElementById('nonet').style.display = url ? 'none' : 'flex';
+  document.getElementById('qrurl').textContent = url;
+  if (url) document.getElementById('qr').src = '/qr.png?t=' + Date.now();
+}
+setInterval(refreshConnect, 3000);
+
+// Folder picker.
+let pk = null;
+const pkEl = id => document.getElementById('pk-' + id);
+async function showFolder(path) {
+  pkEl('err').textContent = '';
+  const r = await fetch('/api/fs?path=' + encodeURIComponent(path));
+  if (!r.ok) { pkEl('err').textContent = "Can't open that folder."; return; }
+  pk = await r.json();
+  const inDrive = d => pk.path === d.path || pk.path.startsWith(d.path + '/') || pk.path.startsWith(d.path + '\\');
+  pkEl('drives').innerHTML = '<h2>Drives</h2>' + pk.roots.map(d =>
+    `<div class="pk-drive${inDrive(d) ? ' on' : ''}" data-path="${esc(d.path)}" title="${esc(d.path)}">` +
+    `${d.name === 'Home' ? '🏠' : '💾'} ${esc(d.name)}</div>`).join('');
+  pkEl('path').textContent = pk.path || 'Pick a drive on the left';
+  pkEl('up').style.visibility = pk.path ? 'visible' : 'hidden';
+  pkEl('dirs').innerHTML = pk.dirs.map(d => `<div class="pk-dir" data-path="${esc(d.path)}">${esc(d.name)}</div>`).join('')
+    || `<div class="pk-empty">${pk.path ? 'No folders inside.' : ''}</div>`;
+  pkEl('dirs').scrollTop = 0;
+  pkEl('go').disabled = !pk.path;
+  pkEl('info').textContent = pk.path ? `${pk.dirs.length} folders and ${pk.files} files here` : '';
+}
+document.getElementById('picker').addEventListener('click', e => {
+  const t = e.target.closest('[data-path]');
+  if (t) showFolder(t.dataset.path);
+});
+function pickerUp() { if (pk) showFolder(pk.parent); }
+async function present() {
+  pkEl('go').disabled = true;
+  pkEl('go').textContent = 'Loading…';
+  const r = await fetch('/api/open?path=' + encodeURIComponent(pk.path), {method: 'POST'});
+  if (r.ok) { document.getElementById('picker').classList.remove('show'); return; }  // next poll shows the presentation
+  pkEl('err').textContent = (await r.text()).trim();
+  pkEl('go').disabled = false;
+  pkEl('go').textContent = 'Present this folder';
+}
+
+// The app is quitting: close this tab (allowed because it has no history), else say it's over.
+function shutDown() {
+  stopMedia();
+  document.body.innerHTML = '<div class="msg" style="position:fixed;inset:0 0 auto;top:40%;transform:translateY(-50%)">' +
+    'The presentation has ended.<br><small>You can close this window.</small></div>' +
+    '<div style="position:fixed;inset:0 0 auto;top:66.7%;text-align:center;font-size:17px;line-height:1.6;color:#888">' +
+    'Thank you for using my tool<br>Created by Layden Blackwell · ' +
+    '<a href="https://laydenb.com" target="_blank" style="color:#3a8;text-decoration:none">laydenb.com</a></div>';
+  setTimeout(() => window.close(), 6000);  // leave the thank-you up for a moment, then close the tab
+}
+
+const go = d => fetch('/api/go?delta=' + d, {method: 'POST'});
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') go(1);
+  if (e.key === 'ArrowLeft') go(-1);
+});
+poll();
+</script></body></html>

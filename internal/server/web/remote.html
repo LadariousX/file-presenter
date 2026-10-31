@@ -1,0 +1,231 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Remote</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;
+    touch-action:manipulation}  /* no double-tap zoom when tapping buttons quickly */
+  html,body{position:fixed;inset:0;margin:0;overflow:hidden;overscroll-behavior:none}
+  body{background:#111;color:#eee;font-family:-apple-system,sans-serif}
+  #main{display:flex;flex-direction:column;height:100%;padding:12px;gap:10px}
+  #thumb{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;border-radius:12px}
+  #thumb img{width:100%;height:100%;object-fit:contain;border-radius:8px}
+  #path{font-size:17px;word-break:break-word;line-height:1.35}
+  .g1{color:#e6e6e6} .g2{color:#8c8c8c} .sep{color:#555}
+  .prog{height:6px;background:#333;border-radius:3px;overflow:hidden}
+  .prog div{height:100%;background:#3a8}
+  #count{font-size:13px;color:#999;margin-top:4px;display:flex;justify-content:space-between}
+  .row{display:flex;gap:10px}
+  button{flex:1;font-size:34px;padding:20px 0;border:0;border-radius:14px;background:#2a2a2a;color:#fff}
+  button:active{background:#444}
+  button.small{font-size:17px;padding:14px 0}
+  #pp{font-size:22px;flex:.6}
+  #skip button{font-size:20px;padding:14px 0}
+  #tl{display:flex;align-items:center;gap:10px;font-size:13px;color:#999;font-variant-numeric:tabular-nums}
+  #tbar{flex:1;margin:0;height:30px;background:transparent;-webkit-appearance:none;appearance:none;touch-action:none}
+  #tbar::-webkit-slider-runnable-track{height:4px;border-radius:2px;
+    background:linear-gradient(#ddd,#ddd) 0/var(--p,0%) 100% no-repeat,#444}
+  #tbar::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;margin-top:-9px;border-radius:50%;background:#fff}
+  #tbar::-moz-range-track{height:4px;border-radius:2px;background:#444}
+  #tbar::-moz-range-progress{height:4px;border-radius:2px;background:#ddd}
+  #tbar::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;background:#fff}
+  #flag.on{background:#4a3a12;color:#fc4}
+  #auto.on{background:#1d4a3a;color:#6ec}
+  #list{position:fixed;inset:0;background:#111;display:none;flex-direction:column}
+  #list.open{display:flex}
+  #lhead,#lfoot{display:flex;gap:8px;padding:10px;align-items:center}
+  #lhead{border-bottom:1px solid #333}
+  #lfoot{border-top:1px solid #333;font-size:15px}
+  #lhead button,#lfoot button{flex:0 0 auto;font-size:16px;padding:10px 14px}
+  #crumb{flex:1;font-size:13px;color:#9ab;word-break:break-word}
+  #lfoot label{flex:1;display:flex;align-items:center;gap:8px}
+  #lfoot input{width:22px;height:22px}
+  #items{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+  .it{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #222}
+  .it:active{background:#2a2a2a}
+  .it.cur{background:#1d3a30}
+  .it img{width:52px;height:52px;object-fit:cover;border-radius:6px;background:#222;flex:0 0 auto}
+  .it .ico{width:52px;text-align:center;font-size:30px;flex:0 0 auto}
+  .it .t{flex:1;min-width:0;font-size:15px;word-break:break-word}
+  .it .sub{font-size:12px;color:#888;margin-top:3px}
+  .it .chk{color:#3a8;font-size:20px;width:22px;flex:0 0 auto}
+  .it .prog{margin-top:4px}
+  #status{position:fixed;left:0;right:0;top:0;padding:12px;text-align:center;font-size:16px;background:#7a5a12;
+          color:#fff;z-index:20;transform:translateY(-100%);transition:transform .3s}
+  #status.show{transform:none}
+  #status.ended{background:#333;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px}
+  .it .start{flex:0 0 auto;font-size:18px;padding:12px 16px;border-radius:10px}
+</style></head><body>
+<div id="status"></div>
+<div id="main">
+  <div class="row">
+    <button class="small" onclick="openList()">Files</button>
+    <button class="small" id="auto" onclick="send({type: 'autoplay', on: !cur.autoplay})">▶ Autoplay</button>
+    <button class="small" id="flag" onclick="send({type: 'flag'})">⚐ Favorite</button>
+  </div>
+  <div id="thumb"><img id="img"></div>
+  <div id="path"></div>
+  <div>
+    <div class="prog"><div id="pbar"></div></div>
+    <div id="count"><span id="pos"></span><span id="seen"></span></div>
+  </div>
+  <div id="tl"><span id="tcur">0:00</span><input type="range" id="tbar" min="0" max="1000" value="0"><span id="tdur">0:00</span></div>
+  <div class="row" id="skip">
+    <button onclick="send({type: 'seek', delta: -10})">↺ 10s</button>
+    <button onclick="send({type: 'seek', delta: 10})">10s ↻</button>
+  </div>
+  <div class="row">
+    <button onclick="send({type: 'go', delta: -1})">◀</button>
+    <button id="pp" onclick="send({type: 'playpause'})">⏯</button>
+    <button onclick="send({type: 'go', delta: 1})">▶</button>
+  </div>
+</div>
+
+<div id="list">
+  <div id="lhead">
+    <button onclick="up()">← Up</button>
+    <div id="crumb"></div>
+    <button onclick="closeList()">✕</button>
+  </div>
+  <div id="items"></div>
+  <div id="lfoot">
+    <label><input type="checkbox" id="dupes" onchange="send({type: 'skipdupes', on: this.checked})">
+      Skip duplicates</label>
+    <button onclick="clearProgress()">Clear progress</button>
+  </div>
+</div>
+
+<script>
+let version = -1, cur = null, dir = '';
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// folder/subfolder/file, segments alternating between two grays
+const pathHTML = s => (s.folder ? s.folder.split('/') : []).concat(s.name)
+  .map((p, i) => `<span class="g${i % 2 + 1}">${esc(p)}</span>`).join('<span class="sep"> / </span>');
+
+function show(s) {
+  cur = s;
+  if (s.version !== version) { version = s.version; $('img').src = '/thumb/' + s.index; }
+  $('path').innerHTML = pathHTML(s);
+  $('pos').textContent = `${s.index + 1} / ${s.total}`;
+  $('seen').textContent = `${s.seen} seen · ${Math.floor(100 * s.seen / s.total)}%`;
+  $('pbar').style.width = (100 * s.seen / s.total) + '%';
+  $('pp').style.display = s.kind.startsWith('video') || s.kind === 'audio' ? '' : 'none';
+  $('skip').style.display = $('tl').style.display = s.kind.startsWith('video') ? '' : 'none';
+  if (s.pos !== tl.pos || s.dur !== tl.dur || s.paused !== tl.paused || s.version !== tl.version)
+    Object.assign(tl, {pos: s.pos, dur: s.dur, paused: s.paused, version: s.version, at: performance.now()});
+  $('flag').textContent = s.flagged ? '⚑ Favorite' : '⚐ Favorite';
+  $('flag').classList.toggle('on', s.flagged);
+  $('auto').textContent = s.autoplay ? '⏸ Autoplay' : '▶ Autoplay';
+  $('auto').classList.toggle('on', s.autoplay);
+  $('dupes').checked = s.skipDupes;
+}
+// Video timeline: follows the viewer's reports, moving smoothly in between; drag the dot to jump.
+const tl = {pos: 0, dur: 0, paused: true, version: -1, at: 0};
+let dragging = false, holdUntil = 0;
+const fmt = s => {
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+};
+function drawTimeline(p) {
+  const f = tl.dur ? Math.min(1, p / tl.dur) : 0;
+  $('tbar').value = 1000 * f;
+  $('tbar').style.setProperty('--p', 100 * f + '%');
+  $('tcur').textContent = fmt(p);
+  $('tdur').textContent = fmt(tl.dur);
+}
+(function tick() {
+  // after a drag, keep the dot where it was dropped until the video has had a moment to get there
+  if (!dragging && performance.now() > holdUntil && cur && cur.kind.startsWith('video'))
+    drawTimeline(!tl.dur ? 0 : Math.min(tl.dur, tl.paused ? tl.pos : tl.pos + (performance.now() - tl.at) / 1000));
+  requestAnimationFrame(tick);
+})();
+$('tbar').addEventListener('input', () => {
+  dragging = true;
+  $('tbar').style.setProperty('--p', $('tbar').value / 10 + '%');
+  $('tcur').textContent = fmt($('tbar').value / 1000 * tl.dur);
+});
+$('tbar').addEventListener('change', () => {
+  const p = $('tbar').value / 1000 * tl.dur;
+  if (tl.dur) send({type: 'seekto', at: p});
+  Object.assign(tl, {pos: p, at: performance.now()});
+  dragging = false;
+  holdUntil = performance.now() + 1000;
+});
+
+// WebSocket to the computer: button presses go out, the current state comes back whenever it changes.
+let ws = null, ended = false;
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.onopen = () => $('status').classList.remove('show');
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'state') show(m.state);
+    else if (m.type === 'error') alert(m.msg);
+  };
+  ws.onclose = e => {
+    ws = null;
+    if (e.reason === 'ended') {
+      ended = true;
+      $('status').textContent = 'The presentation has ended.';
+      $('status').classList.add('show', 'ended');
+      return;
+    }
+    $('status').textContent = 'Reconnecting…';
+    $('status').classList.add('show');
+    setTimeout(connect, 1500);
+  };
+}
+function send(cmd) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(cmd)); }
+// Phones drop the connection while asleep; reconnect right away when the page is visible again.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !ws && !ended) connect();
+});
+function clearProgress() {
+  if (!confirm('Clear all viewing progress?')) return;
+  send({type: 'clear'});
+  setTimeout(() => load(dir), 300);
+}
+
+// Highlight the folder we just came up from, else the one leading to the open file, and the open file itself.
+async function load(d, from) {
+  dir = d;
+  const L = await (await fetch('/api/list?dir=' + encodeURIComponent(d))).json();
+  $('crumb').textContent = d ? d.replaceAll('/', ' › ') : 'Top';
+  const onPath = p => cur && (cur.folder === p || cur.folder.startsWith(p + '/'));
+  const hiDir = L.dirs.some(f => f.path === from) ? from : (L.dirs.find(f => onPath(f.path)) || {}).path;
+  const rows = L.dirs.map(f => `
+    <div class="it${f.path === hiDir ? ' cur' : ''}" data-dir="${esc(f.path)}">
+      <div class="ico">📁</div>
+      <div class="t">${esc(f.name)}
+        <div class="sub">${f.seen} / ${f.total} seen</div>
+        <div class="prog"><div style="width:${100 * f.seen / f.total}%"></div></div>
+      </div>
+      <button class="start" data-first="${f.first}">▶</button>
+    </div>`).concat(L.files.map(f => `
+    <div class="it${cur && f.index === cur.index ? ' cur' : ''}" data-i="${f.index}">
+      <img loading="lazy" src="/thumb/${f.index}">
+      <div class="t">${esc(f.name)}</div>
+      <div class="chk">${f.seen ? '✓' : ''}</div>
+    </div>`));
+  const items = $('items');
+  items.innerHTML = rows.join('') || '<div class="it">Empty</div>';
+  const c = items.querySelector('.cur');
+  c ? c.scrollIntoView({block: 'center'}) : items.scrollTop = 0;
+}
+$('items').onclick = e => {
+  const start = e.target.closest('.start');
+  if (start) { send({type: 'go', to: +start.dataset.first}); closeList(); return; }  // play from this folder on
+  const it = e.target.closest('.it');
+  if (!it) return;
+  if (it.dataset.dir !== undefined) load(it.dataset.dir);
+  else if (it.dataset.i !== undefined) { send({type: 'go', to: +it.dataset.i}); closeList(); }
+};
+function up() { if (dir) load(dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : '', dir); }
+function openList() { $('list').classList.add('open'); load(cur ? cur.folder : ''); }
+function closeList() { $('list').classList.remove('open'); }
+document.addEventListener('gesturestart', e => e.preventDefault());  // iOS pinch zoom
+document.addEventListener('dblclick', e => e.preventDefault());
+connect();
+</script></body></html>
