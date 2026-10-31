@@ -10,7 +10,7 @@ Browse every file on a USB drive or in a folder in a single browser window, cont
 
 ## Download
 
-Get **File Presenter.app** (Mac), **file-presenter.exe** (Windows) and the **User Guide** PDF from the [latest release](https://github.com/LadariousX/file-presenter/releases/latest). The user guide covers first-time setup and full screen on both.
+Get **File-Presenter.dmg** (Mac), **File-Presenter.exe** (Windows) and the **User Guide** PDF from the [latest release](https://github.com/LadariousX/file-presenter/releases/latest). The user guide covers first-time setup and full screen on both.
 
 ## Run
 
@@ -34,7 +34,7 @@ Videos and audio play with sound. Browsers only allow sound after a click or key
 
 Requires Go 1.22+. On a Mac, `./build.sh` builds everything with the app icon into `dist/`:
 
-- `File Presenter.app`: Mac, Apple Silicon and Intel in one app.
+- `File Presenter.app` and `File Presenter.dmg`: Mac, Apple Silicon and Intel in one app; the disk image is what people download.
 - `file-presenter.exe`: Windows, with the icon built in and no console window.
 - `File Presenter User Guide.pdf`: from `USER_GUIDE.md` (needs Chrome, Chromium or Edge installed to print it).
 

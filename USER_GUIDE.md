@@ -6,7 +6,7 @@ File Presenter shows every file on a USB drive or in a folder (photos, videos, m
 
 | Apple Mac | Windows computer |
 |---|---|
-| Open **File Presenter.app**. | Open **file-presenter.exe**. |
+| Open **File Presenter.dmg**, drag **File Presenter** into **Applications**, then open it from there. | Open **File-Presenter.exe**. |
 | **First time:** if macOS says the app can't be opened, go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. If it asks about the local network or incoming connections, click **Allow**. | **First time:** if a blue "Windows protected your PC" box appears, click **More info → Run anyway**. If the firewall asks, allow **Private networks**. |
 | **Full screen:** click the browser window, then press **fn + F** (or **Control + Command + F**). Press it again to leave full screen. | **Full screen:** click the browser window, then press **F11** (on some laptops **fn + F11**). Press it again to leave full screen. |
 

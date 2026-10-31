@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds dist/ (run on a Mac):
-#   File Presenter.app      Mac, Apple Silicon + Intel
+#   File Presenter.app      Mac, Apple Silicon + Intel (and File Presenter.dmg to download it)
 #   file-presenter.exe      Windows, icon compiled in, no console window
 #   File Presenter User Guide.pdf   from USER_GUIDE.md (needs Chrome, Chromium or Edge installed)
 #
@@ -51,6 +51,12 @@ cat >"$app/Info.plist" <<PLIST
 </plist>
 PLIST
 codesign --force --deep -s - "dist/File Presenter.app"
+# A disk image to download: the app plus an Applications shortcut to drag it onto.
+rm -rf dist/dmg && mkdir dist/dmg
+cp -R "dist/File Presenter.app" dist/dmg/
+ln -s /Applications dist/dmg/Applications
+hdiutil create -quiet -volname "File Presenter" -srcfolder dist/dmg -ov -format UDZO "dist/File Presenter.dmg"
+rm -rf dist/dmg
 
 go run ./tools/userguide USER_GUIDE.md "dist/File Presenter User Guide.pdf"
 
