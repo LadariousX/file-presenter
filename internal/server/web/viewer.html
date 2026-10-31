@@ -350,11 +350,8 @@ async function present() {
 function shutDown() {
   stopMedia();
   document.body.innerHTML = '<div class="msg" style="position:fixed;inset:0 0 auto;top:40%;transform:translateY(-50%)">' +
-    'The presentation has ended.<br><small>You can close this window.</small></div>' +
-    '<div style="position:fixed;inset:0 0 auto;top:66.7%;text-align:center;font-size:17px;line-height:1.6;color:#888">' +
-    'Thank you for using my tool<br>Created by Layden Blackwell · ' +
-    '<a href="https://laydenb.com" target="_blank" style="color:#3a8;text-decoration:none">laydenb.com</a></div>';
-  setTimeout(() => window.close(), 6000);  // leave the thank-you up for a moment, then close the tab
+    'The presentation has ended.<br><small>You can close this window.</small></div>';
+  setTimeout(() => window.close(), 6000);  // leave the message up for a moment, then close the tab
 }
 
 const go = d => fetch('/api/go?delta=' + d, {method: 'POST'});
