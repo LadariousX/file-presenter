@@ -2,6 +2,8 @@
 
 File Presenter shows every file on a USB drive or in a folder (photos, videos, music, PDFs) one at a time in a full browser window, and turns your phone into the remote control. It keeps track of what you've already seen, so you can pick up where you left off.
 
+**Why your computer asks for permission:** The first time you open File Presenter, your computer will warn you that it doesn't recognize the app. Getting an app registered with Apple and Microsoft takes time and money, and I'm not paying for that on a free project. The warning means the app isn't registered, not that a problem was found. Only download File Presenter from the [official releases page](https://github.com/LadariousX/file-presenter/releases/latest), where you can also read its source code, then follow the first-time steps below.
+
 ## Getting started
 
 | Apple Mac | Windows computer |
